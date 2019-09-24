@@ -24,6 +24,26 @@ const ModOutputData SynthLFO::renderModulatorOutput()
 	{
 		return lfoOutputData;
 	}
+	LFODelay.setTargetValueInSamples(msecToSamples(sampleRate, parameters->delay));
+	LFORamp.setTargetValueInSamples(msecToSamples(sampleRate, parameters->ramp));
+	if (!(LFODelay.timerExpired()))
+	{
+		LFODelay.advanceTimer();
+		if (parameters->mode == LFOMode::kOneShot || parameters->mode == LFOMode::kSync)
+		{
+			return lfoOutputData;
+		}
+	}
+	double rampSamp = msecToSamples(sampleRate, parameters->ramp);
+	double ampVal = 1;
+	if (LFODelay.timerExpired())
+	{
+		LFORamp.advanceTimer();
+	}
+	if (LFORamp.timerExpired())
+		ampVal = 1;
+	else
+		ampVal = LFORamp.getTick() / (rampSamp);
 
 	// --- always first!
 	bool bWrapped = checkAndWrapModulo(modCounter, phaseInc);
@@ -32,7 +52,6 @@ const ModOutputData SynthLFO::renderModulatorOutput()
 		renderComplete = true;
 		return lfoOutputData;
 	}
-
 	// --- QP output always follows location of current modulo; first set equal
 	modCounterQP = modCounter;
 
@@ -117,8 +136,8 @@ const ModOutputData SynthLFO::renderModulatorOutput()
 
 
 	// --- scale by amplitude
-	lfoOutputData.modulationOutputs[kLFONormalOutput] *= parameters->outputAmplitude;
-	lfoOutputData.modulationOutputs[kLFOQuadPhaseOutput] *= parameters->outputAmplitude;
+	lfoOutputData.modulationOutputs[kLFONormalOutput] *= (parameters->outputAmplitude *ampVal);
+	lfoOutputData.modulationOutputs[kLFOQuadPhaseOutput] *= (parameters->outputAmplitude * ampVal);
 
 	// --- invert two main outputs to make the opposite versions, scaling carries over
 	lfoOutputData.modulationOutputs[kLFONormalOutputInverted] = -lfoOutputData.modulationOutputs[kLFONormalOutput];
@@ -141,6 +160,10 @@ const ModOutputData SynthLFO::renderModulatorOutput()
 	advanceModulo(modCounter, phaseInc);
 
 	// --- scale by amplituded
+	if (parameters->mode == LFOMode::kFreeRun && !(LFODelay.timerExpired()))
+	{
+		lfoOutputData.clear();
+	}
 	return lfoOutputData;
 }
 

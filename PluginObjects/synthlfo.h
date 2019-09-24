@@ -4,20 +4,58 @@
 #include "guiconstants.h"
 
 // --- LFO may have very diff waveforms from pitched output
+/**
+\enum LFOWaveform
+\brief LFO Output wave shape
+
+- kTriangle: Triangle wave
+- kSin: Sine wave
+- kSaw: Saw Tooth wave
+- kRSH: Random Sample and Hold waveform
+- kQRSH: Quasi-radom Sample and Hold waveform
+- kNoise: noise generator
+- kQRNoise: Quasi-random noise generator
+*/
 enum class LFOWaveform { kTriangle, kSin, kSaw, kRSH, kQRSH, kNoise, kQRNoise };
+
+/**
+\enum LFOMode
+\brief LFO Mode of operation
+
+- kSync: LFO restarts with each new note event
+- kOneShot: One cycle of LFO
+- kFreeRun: Never resets after first note on event (models older synths/creates different sound on each note)
+*/
 enum class LFOMode { kSync, kOneShot, kFreeRun };
 
+/**
+\enum Output
+\brief indexing for array of outputs
+
+- kLFONormalOutput: Normal LFO output
+- kLFONormalOutputInverted: Inverted LFO output
+- kLFOQuadPhaseOuput: Quadphase LFO output
+- kLFOQuadPhaseOutputInverted: Inverted Quadphase LFO output
+- kUnipolarOutputFromMax: mimics an INVERTED EG going from MAX to MAX 
+- kUnipolarOutputFromMin: mimics an INVERTED EG going from 0.0 to MAX 
+*/
 // --- indexes in OscillatorOutputData::outputs array
 enum {
 	kLFONormalOutput,			// 0
 	kLFONormalOutputInverted,	// 1 etc...
 	kLFOQuadPhaseOutput,
 	kLFOQuadPhaseOutputInverted,
-	kUnipolarOutputFromMax,		/* this mimics an INVERTED EG going from MAX -> MAX */
-	kUnipolarOutputFromMin		/* this mimics an EG going from 0.0 -> MAX */
+	kUnipolarOutputFromMax,		///< this mimics an INVERTED EG going from MAX to MAX 
+	kUnipolarOutputFromMin		///< this mimics an EG going from 0.0 to MAX 
 };
 
-// ---
+/**
+\struct SynthLFOParameters
+\ingroup SynthStructures
+\brief Structure for passing parameters to synthLFO
+\param params - custom structure with synthLFO parameters (waveform,mode,freq,amp)
+\return the updated structure
+*/
 struct SynthLFOParameters
 {
 	SynthLFOParameters() {}
@@ -31,16 +69,19 @@ struct SynthLFOParameters
 
 		frequency_Hz = params.frequency_Hz;
 		outputAmplitude = params.outputAmplitude;
-
+		delay = params.delay;
+		ramp = params.ramp;
 		return *this;
 	}
 
 	// --- individual parameters
-	LFOWaveform waveform = LFOWaveform::kTriangle;
-	LFOMode mode = LFOMode::kSync;
+	LFOWaveform waveform = LFOWaveform::kTriangle; ///< Waveform of LFO (initialized to Triangle)
+	LFOMode mode = LFOMode::kSync; ///< LFO sync mode (initialized to Sync mode)
 
-	double frequency_Hz = 0.0;
-	double outputAmplitude = 1.0;
+	double frequency_Hz = 12; ///< Frequency of LFO in Hz (initialzied to 0.5 Hz)
+	double outputAmplitude = 1.0; ///< Output amplitude scaling (initialized to 1.0)
+	double delay = 0.0;
+	double ramp = 0.0;
 };
 
 
@@ -65,7 +106,8 @@ public:
 	{
 		sampleRate = _sampleRate;
 		phaseInc = parameters->frequency_Hz / sampleRate;
-
+		LFODelay.resetTimer();
+		LFORamp.resetTimer();
 		// --- timebase variables
 		modCounter = 0.0;			///< modulo counter [0.0, +1.0]
 		modCounterQP = 0.25;		///<Quad Phase modulo counter [0.0, +1.0]
@@ -77,6 +119,8 @@ public:
 	virtual bool update(bool updateAllModRoutings = true);
 	virtual bool doNoteOn(double midiPitch, uint32_t _midiNoteNumber, uint32_t midiNoteVelocity) 
 	{ 
+		LFORamp.resetTimer();
+		LFODelay.resetTimer();
 		renderComplete = false;
 		if (parameters->mode == LFOMode::kSync || parameters->mode == LFOMode::kOneShot)
 		{
@@ -105,6 +149,13 @@ public:
 	virtual void setModulators(std::shared_ptr<ModInputData> _modulators) {
 		modulators = _modulators;
 	}
+	inline double msecToSamples(double sampleRate, double timeMSec)
+
+	{
+
+		return sampleRate * (timeMSec / 1000.0);;
+
+	}
 
 protected:
 	// --- MIDI Data Interface
@@ -114,7 +165,11 @@ protected:
 	std::shared_ptr<ModInputData> modulators = std::make_shared<ModInputData>();
 
 	// --- parameters
-	std::shared_ptr<SynthLFOParameters> parameters = nullptr;
+	std::shared_ptr<SynthLFOParameters> parameters = nullptr; 
+
+
+	Timer LFODelay;
+	Timer LFORamp;
 
 	// --- sample rate
 	double sampleRate = 0.0;			///< sample rate
